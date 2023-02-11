@@ -4,5 +4,5 @@ This project presents a Recurrent Neural Network (RNN) model that classifies gen
 
 The code and data are given in this github repository
 
-
+![Example Image Here](https://github.com/devic1/RNN-/raw/main/images/sample.png)
 
