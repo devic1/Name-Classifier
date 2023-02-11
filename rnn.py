@@ -7,7 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/1zapgMBrfXs1oW_TRRg9lGdQXnTJ2qcVT
 """
 
-!wget https://download.pytorch.org/tutorial/data.zip
+!wget https://github.com/devic1/RNN-/raw/main/data.zip
 
 !unzip data.zip
 
@@ -16,6 +16,9 @@ import torch.nn as nn
 import os
 import unicodedata
 
+device = (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
+device
+
 lett = set()
 g = " .,;'"
 for i in g:
@@ -23,22 +26,21 @@ for i in g:
 lett
 
 cat = {}
-for i in os.listdir("data/names"):
-  with open(os.path.join("data","names",i),"r") as f:
+for i in os.listdir("data"):
+  with open(os.path.join("data",i),"r") as f:
     nd = f.read().split("\n")
     for j in nd:
       for k in j:
-        k = unicodedata.normalize('NFKD',k).encode('ascii', 'ignore').decode()
         lett.add(k)
     cat[i[:-4]] = nd
 n_cat = len(cat)
 
-ltoi = {j:i for i,j in enumerate(lett)}
+ltoi = {j:i for i,j in enumerate(sorted(lett))}
 ln_l = len(ltoi)
 print(ltoi)
 ln_l
 
-print(cat['Italian'][:5])
+print(cat['boys'][:5])
 n_cat
 
 def enc(letter):
@@ -46,18 +48,30 @@ def enc(letter):
   for idx,ele in enumerate(letter):
     c = torch.nn.functional.one_hot(torch.tensor(ltoi[ele]),num_classes=ln_l)
     tempt = torch.cat((tempt,c.unsqueeze(0)),dim=0)
-  return tempt.view(-1,1,62)
+  return tempt.view(-1,1,ln_l)
 
-f = enc("Jones")
+f = enc("அகண்டலன்")
+f[0].shape
 
-import torch.nn as nn
+catn = list(cat.keys())
+def getdata(train=True):
+  ranc = torch.randint(0,2,(1,))
+  catname = catn[ranc]
+  ln = len(cat[catname])
+  split = int(0.9*ln)
+  if train:
+    ranw = torch.randint(0,split,(1,))
+  else:
+    ranw = torch.randint(split,ln,(1,))
+  wtt = cat[catname][ranw]
+  if len(wtt) == 0:
+    return getdata()
+  return ranc,enc(wtt),catname,wtt
 
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(RNN, self).__init__()
-
         self.hidden_size = hidden_size
-
         self.i2h = nn.Linear(input_size + hidden_size, hidden_size)
         self.i2o = nn.Linear(input_size + hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=1)
@@ -73,6 +87,51 @@ class RNN(nn.Module):
         return torch.zeros(1, self.hidden_size)
 
 n_hidden = 128
-rnn = RNN(62, n_hidden, n_cat)
 
-rnn
+rnn = RNN(ln_l, n_hidden, n_cat).to(device)
+
+loss_fn = torch.nn.NLLLoss()
+optimizer = torch.optim.SGD(rnn.parameters(),lr=0.005)
+
+epochs = 100000
+rnn.train()
+for i in range(epochs):
+  label,inp,name,word = getdata()
+  hidden = rnn.initHidden()
+  inp,hidden,label = inp.to(device),hidden.to(device),label.to(device)
+  for j in range(len(word)):
+    output,hidden = rnn(inp[j],hidden)
+  loss = loss_fn(output,label)
+  optimizer.zero_grad()  
+  loss.backward()
+  optimizer.step()
+  if i % (epochs/10) == 0:
+    print(loss)
+
+rnn.eval()
+epoch = 1000
+num_miss = 0
+for j in range(epoch):
+  label,inp,name,word = getdata(train=False)
+  hidden = rnn.initHidden()
+  inp,hidden,label = inp.to(device),hidden.to(device),label.to(device)
+  for k in range(len(word)):
+    output,hidden = rnn(inp[k],hidden)
+  h,res = output.topk(1)
+  if res != label:
+    num_miss += 1
+
+accuracy = 100-((num_miss/epoch)*100)
+print(f'The accuracy for the model is {accuracy}%')
+
+n = "விக்டர்"
+#n = "த்ரிஷா"
+#n = input("Enter the name : ")
+inp = enc(n).to(device)
+for i in range(len(n)):
+  hid = rnn.initHidden().to(device)
+  ans,hid = rnn(inp[i],hid)
+_,result = ans.topk(1)
+print(f'The Name {n} is a {catn[result][:-1]} name.')
+
+print("Happy Ending :)")
